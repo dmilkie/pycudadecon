@@ -75,12 +75,20 @@ def rl_init(
     """
     nz, ny, nx = rawdata_shape
 
-    args: list = [nx, ny, nz, dxdata, dzdata, dxpsf, dzpsf, deskew, rotate, width]
-
-    if lib.lib.version >= (0, 6):  # must have cudadecon library >= 0.6.0
-        args += [skewed_decon]
-
-    lib.RL_interface_init(*args, otfpath.encode())  # type: ignore
+    lib.RL_interface_init(
+        nx,
+        ny,
+        nz,
+        dxdata,
+        dzdata,
+        dxpsf,
+        dzpsf,
+        deskew,
+        rotate,
+        width,
+        skewed_decon,
+        otfpath.encode(),
+      )  # type: ignore
 
 
 def rl_decon(
@@ -171,7 +179,8 @@ def rl_decon(
     if not im.flags["C_CONTIGUOUS"]:
         im = np.ascontiguousarray(im)
 
-    args = [
+    verbose = False
+    lib.RL_interface(
         im,
         nx,
         ny,
@@ -187,12 +196,9 @@ def rl_decon(
         nz_blend,
         pad_val,
         dup_rev_z,
-    ]
-
-    if lib.lib.version >= (0, 6):
-        args += [skewed_decon]
-
-    lib.RL_interface(*args)  # type: ignore
+        skewed_decon,
+        verbose,
+        )  # type: ignore
 
     if save_deskewed:
         return decon_result, deskew_result
@@ -327,14 +333,13 @@ def decon(
     # make_otf kwargs:
     dzpsf: float = 0.1,
     dxpsf: float = 0.1,
-    wavelength: int = 520,
+    wavelength: int = 520, # wavelength in nm
     na: float = 1.25,
     nimm: float = 1.3,
     otf_bgrd: Optional[int] = None,
     krmax: int = 0,
     fixorigin: int = 10,
     cleanup_otf: bool = False,
-    max_otf_size: int = 60000,
     # rl_init_kwargs:
     dzdata: float = 0.5,
     dxdata: float = 0.1,
@@ -392,10 +397,6 @@ def decon(
         to get value for kr=0, by default 10
     cleanup_otf : bool, optional
         clean-up outside OTF support, by default False
-    max_otf_size : int, optional
-        make sure OTF is smaller than this many bytes. Deconvolution
-        may fail if the OTF is larger than 60KB (default: 60000), by default 60000
-
     dzdata : float, optional
         Z-step size of data, by default 0.5
     dxdata : float, optional
@@ -423,6 +424,10 @@ def decon(
         by default 0
     save_deskewed : bool, optional
         Save deskewed raw data as well as deconvolution result, by default False
+    output_shape : tuple of int, optional
+        Specify the output shape after deskewing.  Usually this is unnecessary and
+        can be autodetected.  Mostly intended for use within a
+        :class:`pycudadecon.RLContext` context, by default None
     napodize : int, optional
         Number of pixels to soften edge with, by default 15
     nz_blend : int, optional
@@ -487,7 +492,7 @@ def decon(
         krmax=krmax,
         fixorigin=fixorigin,
         cleanup_otf=cleanup_otf,
-        max_otf_size=max_otf_size,
+        skewed_decon=skewed_decon,
     ) as otf:
         arraygen = _yield_arrays(images, fpattern)
         # first, assume that all of the images are the same shape...
