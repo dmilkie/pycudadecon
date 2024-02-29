@@ -7,8 +7,21 @@ from typing_extensions import Annotated
 
 from ._ctyped import Library
 
+# FIXME: ugly... we should export version better from cudadecon
+_cudadecon_version: Tuple[int, ...] = (0, 0, 0)
+_conda_prefix = os.getenv("CONDA_PREFIX")
+if _conda_prefix:
+    conda_meta = Path(_conda_prefix) / "conda-meta"
+    if conda_meta.exists():
+        fname = next(conda_meta.glob("cudadecon*.json"), None)
+        if fname is not None:
+            name, *rest = fname.stem.split("-")
+            abistring = rest[0] if rest else None
+            if abistring:
+                _cudadecon_version = tuple(int(x) for x in abistring.split("."))
+
 try:
-    lib = Library("libcudaDecon")
+    lib = Library("libcudaDecon", version=_cudadecon_version)
 except FileNotFoundError:
     raise FileNotFoundError(
         "Unable to find library 'lidbcudaDecon'\n"
@@ -33,70 +46,117 @@ def camcor_interface(  # type: ignore [empty-body]
     """Execute camera corrections."""
 
 
-@lib.function
-def RL_interface_init(  # type: ignore [empty-body]
-    nx: int,
-    ny: int,
-    nz: int,
-    dxdata: float,
-    dzdata: float,
-    dxpsf: float,
-    dzpsf: float,
-    deskewAngle: float,
-    rotationAngle: float,
-    outputWidth: int,
-    bSkewedDecon: bool,
-    otfpath: str,
-) -> int:
-    """Call RL_interface_init() before RL_interface when running decon.
+if _cudadecon_version < (0, 6):
 
-    nx, ny, and nz: raw image dimensions
-    dr: raw image pixel size
-    dz: raw image Z step
-    dr_psf: PSF pixel size
-    dz_psf: PSF Z step
-    deskewAngle: deskewing angle; usually -32.8 on Bi-chang scope and 32.8 on
-    Wes scope
-    rotationAngle: if 0 then no final rotation is done;
-        otherwise set to the same as deskewAngle
-    outputWidth: if set to 0, then calculate the output width because of
-    deskewing; otherwise use this value as the output width
-    bSkewedDecon: if true then do deconvolution in skewed space
-    OTF_file_name: file name of OTF
-    """
+    @lib.function
+    def RL_interface_init(  # type: ignore [empty-body]
+        nx: int,
+        ny: int,
+        nz: int,
+        dxdata: float,
+        dzdata: float,
+        dxpsf: float,
+        dzpsf: float,
+        deskewAngle: float,
+        rotationAngle: float,
+        outputWidth: int,
+        otfpath: str,
+    ) -> int:
+        """Call RL_interface_init() before RL_interface when running decon.
+
+        nx, ny, and nz: raw image dimensions
+        dr: raw image pixel size
+        dz: raw image Z step
+        dr_psf: PSF pixel size
+        dz_psf: PSF Z step
+        deskewAngle: deskewing angle; usually -32.8 on Bi-chang scope and 32.8 on
+        Wes scope
+        rotationAngle: if 0 then no final rotation is done;
+            otherwise set to the same as deskewAngle
+        outputWidth: if set to 0, then calculate the output width because of
+        deskewing; otherwise use this value as the output width
+        OTF_file_name: file name of OTF
+        """
+
+else:  # include "bSkewDecon" arguement
+
+    @lib.function
+    def RL_interface_init(  # type: ignore [empty-body]
+        nx: int,
+        ny: int,
+        nz: int,
+        dxdata: float,
+        dzdata: float,
+        dxpsf: float,
+        dzpsf: float,
+        deskewAngle: float,
+        rotationAngle: float,
+        outputWidth: int,
+        bSkewedDecon: bool,
+        otfpath: str,
+    ) -> int:
+        """Call RL_interface_init() before RL_interface when running decon.
+
+        nx, ny, and nz: raw image dimensions
+        dr: raw image pixel size
+        dz: raw image Z step
+        dr_psf: PSF pixel size
+        dz_psf: PSF Z step
+        deskewAngle: deskewing angle; usually -32.8 on Bi-chang scope and 32.8 on
+        Wes scope
+        rotationAngle: if 0 then no final rotation is done;
+            otherwise set to the same as deskewAngle
+        outputWidth: if set to 0, then calculate the output width because of
+        deskewing; otherwise use this value as the output width
+        bSkewedDecon: if true then do deconvolution in skewed space
+        OTF_file_name: file name of OTF
+        """
 
 
-@lib.function
-def RL_interface(  # type: ignore [empty-body]
-    raw_data: ndarray_uint16,
-    nx: int,
-    ny: int,
-    nz: int,
-    result: np.ndarray,
-    raw_deskewed_result: np.ndarray,
-    background: float,
-    bDoRescale: bool,
-    bSaveDeskewedRaw: bool,
-    nIters: int,
-    extraShift: int,
-    napodize: int = 0,
-    nZblend: int = 0,
-    padVal: float = 0.0,
-    bDupRevStack: bool = False,
-    bSkewedDecon: bool = False,
-    bverbose: bool = True,
-) -> int:
-    """Perform decon."""
+if _cudadecon_version < (0, 6):
 
-"""
-  CUDADECON_API int RL_interface(
-      const unsigned short *const raw_data, int nx, int ny, int nz,
-      float *result, float *raw_deskewed_result, float background,
-      bool bDoRescale, bool bSaveDeskewedRaw, int nIters, int extraShift,
-      int napodize = 0, int nZblend = 0, float padVal = 0,
-      bool bDupRevStack = false, bool bSkewedDecon = false);
-      
-      """
+    @lib.function
+    def RL_interface(  # type: ignore [empty-body]
+        raw_data: ndarray_uint16,
+        nx: int,
+        ny: int,
+        nz: int,
+        result: np.ndarray,
+        raw_deskewed_result: np.ndarray,
+        background: float,
+        bDoRescale: bool,
+        bSaveDeskewedRaw: bool,
+        nIters: int,
+        extraShift: int,
+        napodize: int = 0,
+        nZblend: int = 0,
+        padVal: float = 0.0,
+        bDupRevStack: bool = False,
+    ) -> int:
+        """Perform decon."""
+
+else:
+
+    @lib.function
+    def RL_interface(  # type: ignore [empty-body]
+        raw_data: ndarray_uint16,
+        nx: int,
+        ny: int,
+        nz: int,
+        result: np.ndarray,
+        raw_deskewed_result: np.ndarray,
+        background: float,
+        bDoRescale: bool,
+        bSaveDeskewedRaw: bool,
+        nIters: int,
+        extraShift: int,
+        napodize: int = 0,
+        nZblend: int = 0,
+        padVal: float = 0.0,
+        bDupRevStack: bool = False,
+        bSkewedDecon: bool = False,
+    ) -> int:
+        """Perform decon."""
 
 
 # The following are used between init and RL_interface to
@@ -191,6 +251,7 @@ except FileNotFoundError:
         "Please try `conda install -c conda-forge cudadecon`."
     ) from None
 
+
 @otf_lib.function
 def makeOTF(
     ifiles: bytes,
@@ -205,25 +266,5 @@ def makeOTF(
     dr: float = 0.102,
     krmax: int = 0,
     bDoCleanup: bool = False,
-    b3Dout: bool = True,
 ):
-        """Make OTF file(s) from `ifiles`, write to `ofiles`."""
-        """
-        from "radialft_interface.cpp":
-        
-        makeOTF(
-            const char * const ifiles,
-            const char * const ofiles,
-            int lambdanm = 520,
-            float dz = 0.102,
-            int interpkr = 10,
-            bool bUserBackground = false,
-            float background = 90,
-            float NA = 1.25,
-            float NIMM = 1.3,
-            float dr = 0.102,
-            int krmax = 0,
-            bool bDoCleanup = false,
-            bool b3Dout = true);
-        """
-
+    """Make OTF file(s) from `ifiles`, write to `ofiles`."""
